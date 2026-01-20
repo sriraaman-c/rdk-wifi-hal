@@ -1164,6 +1164,11 @@ void wifi_hal_configure_mbssid(wifi_radio_info_t *radio);
 void wifi_hal_set_mgt_frame_rate_limit(bool enable, int rate_limit, int window_size,
     int cooldown_time);
 
+/* HE (802.11ax) and EHT (802.11be) capabilities printing functions */
+void wifi_hal_print_he_eht_caps_for_band(wifi_radio_info_t *radio, enum nl80211_band band);
+INT wifi_hal_print_he_eht_capabilities(wifi_radio_index_t radio_index);
+INT wifi_hal_print_all_he_eht_capabilities(void);
+
 #ifdef __cplusplus
 }
 #endif

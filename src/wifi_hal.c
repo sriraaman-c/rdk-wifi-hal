@@ -4704,3 +4704,302 @@ int steering_set_acl_mode(uint32_t apIndex, uint32_t mac_filter_mode)
     vap->u.bss_info.mac_filter_mode = mac_filter_mode;
     return (nl80211_set_acl(interface));
 }
+
+/**
+ * @brief Get the operation mode string from enum
+ * @param opmode - IEEE80211 operation mode enum
+ * @return const char* - String representation of the mode
+ */
+static const char* wifi_hal_get_opmode_str(enum ieee80211_op_mode opmode)
+{
+    switch (opmode) {
+    case IEEE80211_MODE_INFRA:
+        return "INFRA/STA";
+    case IEEE80211_MODE_IBSS:
+        return "IBSS/ADHOC";
+    case IEEE80211_MODE_AP:
+        return "AP";
+    case IEEE80211_MODE_MESH:
+        return "MESH";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+/**
+ * @brief Get the NL80211 band string from enum
+ * @param band - NL80211 band enum
+ * @return const char* - String representation of the band
+ */
+static const char* wifi_hal_get_band_str(enum nl80211_band band)
+{
+    switch (band) {
+    case NL80211_BAND_2GHZ:
+        return "2.4GHz";
+    case NL80211_BAND_5GHZ:
+        return "5GHz";
+#if HOSTAPD_VERSION >= 210
+    case NL80211_BAND_6GHZ:
+        return "6GHz";
+#endif
+    default:
+        return "UNKNOWN";
+    }
+}
+
+#ifdef CONFIG_IEEE80211AX
+/**
+ * @brief Print HE (802.11ax) capabilities from hostapd_hw_modes
+ * @param he_cap - Pointer to he_capabilities structure
+ * @param opmode - Operation mode (AP, STA, etc.)
+ * @param band_str - Band string for logging
+ */
+static void wifi_hal_print_he_capabilities(struct he_capabilities *he_cap,
+                                           enum ieee80211_op_mode opmode,
+                                           const char *band_str)
+{
+    unsigned int i;
+
+    if (!he_cap) {
+        wifi_hal_info_print("  HE Capabilities: NULL\n");
+        return;
+    }
+
+    wifi_hal_info_print("  HE Capabilities for %s mode on %s band:\n",
+                        wifi_hal_get_opmode_str(opmode), band_str);
+    wifi_hal_info_print("    HE Supported: %s\n", he_cap->he_supported ? "Yes" : "No");
+
+    if (!he_cap->he_supported) {
+        return;
+    }
+
+    /* Print HE MAC Capabilities */
+    wifi_hal_info_print("    HE MAC Capabilities: ");
+    for (i = 0; i < sizeof(he_cap->mac_cap); i++) {
+        wifi_hal_info_print("%02x ", he_cap->mac_cap[i]);
+    }
+    wifi_hal_info_print("\n");
+
+    /* Print HE PHY Capabilities */
+    wifi_hal_info_print("    HE PHY Capabilities: ");
+    for (i = 0; i < sizeof(he_cap->phy_cap); i++) {
+        wifi_hal_info_print("%02x ", he_cap->phy_cap[i]);
+    }
+    wifi_hal_info_print("\n");
+
+    /* Decode some important PHY capabilities */
+    wifi_hal_info_print("    HE PHY Decoded:\n");
+    wifi_hal_info_print("      - Channel Width Set (phy_cap[0]): 0x%02x\n", he_cap->phy_cap[0]);
+    wifi_hal_info_print("        - 40MHz in 2.4GHz: %s\n",
+        (he_cap->phy_cap[0] & 0x02) ? "Supported" : "Not Supported");
+    wifi_hal_info_print("        - 40/80MHz in 5GHz: %s\n",
+        (he_cap->phy_cap[0] & 0x04) ? "Supported" : "Not Supported");
+    wifi_hal_info_print("        - 160MHz in 5GHz: %s\n",
+        (he_cap->phy_cap[0] & 0x08) ? "Supported" : "Not Supported");
+    wifi_hal_info_print("        - 80+80MHz in 5GHz: %s\n",
+        (he_cap->phy_cap[0] & 0x10) ? "Supported" : "Not Supported");
+
+    /* Beamforming capabilities */
+    wifi_hal_info_print("      - SU Beamformer: %s\n",
+        (he_cap->phy_cap[HE_PHYCAP_SU_BEAMFORMER_CAPAB_IDX] & HE_PHYCAP_SU_BEAMFORMER_CAPAB) ?
+        "Supported" : "Not Supported");
+    wifi_hal_info_print("      - SU Beamformee: %s\n",
+        (he_cap->phy_cap[HE_PHYCAP_SU_BEAMFORMEE_CAPAB_IDX] & HE_PHYCAP_SU_BEAMFORMEE_CAPAB) ?
+        "Supported" : "Not Supported");
+    wifi_hal_info_print("      - MU Beamformer: %s\n",
+        (he_cap->phy_cap[HE_PHYCAP_MU_BEAMFORMER_CAPAB_IDX] & HE_PHYCAP_MU_BEAMFORMER_CAPAB) ?
+        "Supported" : "Not Supported");
+
+    /* Print HE MCS/NSS Support */
+    wifi_hal_info_print("    HE MCS/NSS Support: ");
+    for (i = 0; i < sizeof(he_cap->mcs); i++) {
+        wifi_hal_info_print("%02x ", he_cap->mcs[i]);
+    }
+    wifi_hal_info_print("\n");
+
+    /* Print HE PPE Thresholds */
+    wifi_hal_info_print("    HE PPE Thresholds: ");
+    for (i = 0; i < sizeof(he_cap->ppet); i++) {
+        wifi_hal_info_print("%02x ", he_cap->ppet[i]);
+    }
+    wifi_hal_info_print("\n");
+
+#if HOSTAPD_VERSION >= 210
+    /* Print 6GHz Band Capabilities */
+    wifi_hal_info_print("    HE 6GHz Band Capabilities: 0x%04x\n", he_cap->he_6ghz_capa);
+#endif
+}
+#endif /* CONFIG_IEEE80211AX */
+
+#ifdef CONFIG_IEEE80211BE
+/**
+ * @brief Print EHT (802.11be) capabilities from hostapd_hw_modes
+ * @param eht_cap - Pointer to eht_capabilities structure
+ * @param opmode - Operation mode (AP, STA, etc.)
+ * @param band_str - Band string for logging
+ */
+static void wifi_hal_print_eht_capabilities(struct eht_capabilities *eht_cap,
+                                            enum ieee80211_op_mode opmode,
+                                            const char *band_str)
+{
+    unsigned int i;
+
+    if (!eht_cap) {
+        wifi_hal_info_print("  EHT Capabilities: NULL\n");
+        return;
+    }
+
+    wifi_hal_info_print("  EHT Capabilities for %s mode on %s band:\n",
+                        wifi_hal_get_opmode_str(opmode), band_str);
+    wifi_hal_info_print("    EHT Supported: %s\n", eht_cap->eht_supported ? "Yes" : "No");
+
+    if (!eht_cap->eht_supported) {
+        return;
+    }
+
+    /* Print EHT MAC Capabilities */
+    wifi_hal_info_print("    EHT MAC Capabilities: ");
+    for (i = 0; i < sizeof(eht_cap->mac_cap); i++) {
+        wifi_hal_info_print("%02x ", eht_cap->mac_cap[i]);
+    }
+    wifi_hal_info_print("\n");
+
+    /* Print EHT PHY Capabilities */
+    wifi_hal_info_print("    EHT PHY Capabilities: ");
+    for (i = 0; i < sizeof(eht_cap->phy_cap); i++) {
+        wifi_hal_info_print("%02x ", eht_cap->phy_cap[i]);
+    }
+    wifi_hal_info_print("\n");
+
+    /* Decode some important PHY capabilities */
+    wifi_hal_info_print("    EHT PHY Decoded:\n");
+    wifi_hal_info_print("      - 320MHz in 6GHz: %s\n",
+        (eht_cap->phy_cap[0] & 0x02) ? "Supported" : "Not Supported");
+    wifi_hal_info_print("      - SU Beamformer: %s\n",
+        (eht_cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMER_IDX] & EHT_PHYCAP_SU_BEAMFORMER) ?
+        "Supported" : "Not Supported");
+    wifi_hal_info_print("      - SU Beamformee: %s\n",
+        (eht_cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMEE_IDX] & EHT_PHYCAP_SU_BEAMFORMEE) ?
+        "Supported" : "Not Supported");
+    wifi_hal_info_print("      - MU Beamformer: %s\n",
+        (eht_cap->phy_cap[EHT_PHYCAP_MU_BEAMFORMER_IDX] & EHT_PHYCAP_MU_BEAMFORMER_MASK) ?
+        "Supported" : "Not Supported");
+
+    /* Print EHT MCS/NSS Support */
+    wifi_hal_info_print("    EHT MCS/NSS Support: ");
+    for (i = 0; i < sizeof(eht_cap->mcs); i++) {
+        wifi_hal_info_print("%02x ", eht_cap->mcs[i]);
+    }
+    wifi_hal_info_print("\n");
+
+    /* Print EHT PPE Thresholds */
+    wifi_hal_info_print("    EHT PPE Thresholds: ");
+    for (i = 0; i < sizeof(eht_cap->ppet); i++) {
+        wifi_hal_info_print("%02x ", eht_cap->ppet[i]);
+    }
+    wifi_hal_info_print("\n");
+}
+#endif /* CONFIG_IEEE80211BE */
+
+/**
+ * @brief Print HE and EHT capabilities for a specific band from radio hw_modes
+ * @param radio - Pointer to wifi_radio_info_t structure
+ * @param band - NL80211 band to print capabilities for
+ */
+void wifi_hal_print_he_eht_caps_for_band(wifi_radio_info_t *radio, enum nl80211_band band)
+{
+    struct hostapd_hw_modes *mode;
+    const char *band_str;
+    enum ieee80211_op_mode opmode;
+
+    if (!radio) {
+        wifi_hal_error_print("%s:%d: radio is NULL\n", __func__, __LINE__);
+        return;
+    }
+
+    if (band >= NUM_NL80211_BANDS) {
+        wifi_hal_error_print("%s:%d: Invalid band %d\n", __func__, __LINE__, band);
+        return;
+    }
+
+    mode = &radio->hw_modes[band];
+    band_str = wifi_hal_get_band_str(band);
+
+    wifi_hal_info_print("========================================\n");
+    wifi_hal_info_print("Radio %d (%s) - HE/EHT Capabilities for %s band\n",
+                        radio->index, radio->name, band_str);
+    wifi_hal_info_print("========================================\n");
+
+    /* Print for each operation mode */
+    for (opmode = IEEE80211_MODE_INFRA; opmode < IEEE80211_MODE_NUM; opmode++) {
+#ifdef CONFIG_IEEE80211AX
+        wifi_hal_print_he_capabilities(&mode->he_capab[opmode], opmode, band_str);
+#endif
+#ifdef CONFIG_IEEE80211BE
+        wifi_hal_print_eht_capabilities(&mode->eht_capab[opmode], opmode, band_str);
+#endif
+        wifi_hal_info_print("\n");
+    }
+}
+
+/**
+ * @brief Print all HE and EHT capabilities from hostapd_hw_modes for a radio
+ * @param radio_index - RDK radio index
+ * @return RETURN_OK on success, RETURN_ERR on failure
+ */
+INT wifi_hal_print_he_eht_capabilities(wifi_radio_index_t radio_index)
+{
+    wifi_radio_info_t *radio;
+    enum nl80211_band band;
+
+    radio = get_radio_by_rdk_index(radio_index);
+    if (!radio) {
+        wifi_hal_error_print("%s:%d: Failed to get radio for index %d\n",
+                             __func__, __LINE__, radio_index);
+        return RETURN_ERR;
+    }
+
+    wifi_hal_info_print("\n");
+    wifi_hal_info_print("################################################################\n");
+    wifi_hal_info_print("# HE (802.11ax) and EHT (802.11be) Capabilities Report         #\n");
+    wifi_hal_info_print("# Radio Index: %d, Name: %s                              \n",
+                        radio_index, radio->name);
+    wifi_hal_info_print("################################################################\n");
+
+    /* Print capabilities for each band */
+    for (band = NL80211_BAND_2GHZ; band < NUM_NL80211_BANDS; band++) {
+        wifi_hal_print_he_eht_caps_for_band(radio, band);
+    }
+
+    wifi_hal_info_print("################################################################\n");
+    wifi_hal_info_print("# End of HE/EHT Capabilities Report                            #\n");
+    wifi_hal_info_print("################################################################\n\n");
+
+    return RETURN_OK;
+}
+
+/**
+ * @brief Print HE and EHT capabilities for all radios
+ * @return RETURN_OK on success, RETURN_ERR on failure
+ */
+INT wifi_hal_print_all_he_eht_capabilities(void)
+{
+    unsigned int i;
+    INT ret = RETURN_OK;
+
+    wifi_hal_info_print("\n");
+    wifi_hal_info_print("================================================================\n");
+    wifi_hal_info_print("= Printing HE/EHT capabilities for all %d radios              =\n",
+                        g_wifi_hal.num_radios);
+    wifi_hal_info_print("================================================================\n");
+
+    for (i = 0; i < g_wifi_hal.num_radios; i++) {
+        if (wifi_hal_print_he_eht_capabilities(i) != RETURN_OK) {
+            wifi_hal_error_print("%s:%d: Failed to print capabilities for radio %d\n",
+                                 __func__, __LINE__, i);
+            ret = RETURN_ERR;
+        }
+    }
+
+    return ret;
+}

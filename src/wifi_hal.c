@@ -4759,6 +4759,7 @@ static void wifi_hal_print_he_capabilities(struct he_capabilities *he_cap,
                                            const char *band_str)
 {
     unsigned int i;
+    const u8 *phy_ptr;
 
     if (!he_cap) {
         wifi_hal_info_print("  HE Capabilities: NULL\n");
@@ -4788,26 +4789,27 @@ static void wifi_hal_print_he_capabilities(struct he_capabilities *he_cap,
     wifi_hal_info_print("\n");
 
     /* Decode some important PHY capabilities */
+    phy_ptr = (const u8 *)&he_cap->phy_cap;
     wifi_hal_info_print("    HE PHY Decoded:\n");
-    wifi_hal_info_print("      - Channel Width Set (phy_cap[0]): 0x%02x\n", he_cap->phy_cap[0]);
+    wifi_hal_info_print("      - Channel Width Set (phy_cap[0]): 0x%02x\n", phy_ptr[0]);
     wifi_hal_info_print("        - 40MHz in 2.4GHz: %s\n",
-        (he_cap->phy_cap[0] & 0x02) ? "Supported" : "Not Supported");
+        (phy_ptr[0] & 0x02) ? "Supported" : "Not Supported");
     wifi_hal_info_print("        - 40/80MHz in 5GHz: %s\n",
-        (he_cap->phy_cap[0] & 0x04) ? "Supported" : "Not Supported");
+        (phy_ptr[0] & 0x04) ? "Supported" : "Not Supported");
     wifi_hal_info_print("        - 160MHz in 5GHz: %s\n",
-        (he_cap->phy_cap[0] & 0x08) ? "Supported" : "Not Supported");
+        (phy_ptr[0] & 0x08) ? "Supported" : "Not Supported");
     wifi_hal_info_print("        - 80+80MHz in 5GHz: %s\n",
-        (he_cap->phy_cap[0] & 0x10) ? "Supported" : "Not Supported");
+        (phy_ptr[0] & 0x10) ? "Supported" : "Not Supported");
 
     /* Beamforming capabilities */
     wifi_hal_info_print("      - SU Beamformer: %s\n",
-        (he_cap->phy_cap[HE_PHYCAP_SU_BEAMFORMER_CAPAB_IDX] & HE_PHYCAP_SU_BEAMFORMER_CAPAB) ?
+        (phy_ptr[HE_PHYCAP_SU_BEAMFORMER_CAPAB_IDX] & HE_PHYCAP_SU_BEAMFORMER_CAPAB) ?
         "Supported" : "Not Supported");
     wifi_hal_info_print("      - SU Beamformee: %s\n",
-        (he_cap->phy_cap[HE_PHYCAP_SU_BEAMFORMEE_CAPAB_IDX] & HE_PHYCAP_SU_BEAMFORMEE_CAPAB) ?
+        (phy_ptr[HE_PHYCAP_SU_BEAMFORMEE_CAPAB_IDX] & HE_PHYCAP_SU_BEAMFORMEE_CAPAB) ?
         "Supported" : "Not Supported");
     wifi_hal_info_print("      - MU Beamformer: %s\n",
-        (he_cap->phy_cap[HE_PHYCAP_MU_BEAMFORMER_CAPAB_IDX] & HE_PHYCAP_MU_BEAMFORMER_CAPAB) ?
+        (phy_ptr[HE_PHYCAP_MU_BEAMFORMER_CAPAB_IDX] & HE_PHYCAP_MU_BEAMFORMER_CAPAB) ?
         "Supported" : "Not Supported");
 
     /* Print HE MCS/NSS Support */
@@ -4843,6 +4845,7 @@ static void wifi_hal_print_eht_capabilities(struct eht_capabilities *eht_cap,
                                             const char *band_str)
 {
     unsigned int i;
+    const u8 *ptr;
 
     if (!eht_cap) {
         wifi_hal_info_print("  EHT Capabilities: NULL\n");
@@ -4857,45 +4860,50 @@ static void wifi_hal_print_eht_capabilities(struct eht_capabilities *eht_cap,
         return;
     }
 
-    /* Print EHT MAC Capabilities */
+    /* Print EHT MAC Capabilities - handle both u16 and array types */
     wifi_hal_info_print("    EHT MAC Capabilities: ");
+    ptr = (const u8 *)&eht_cap->mac_cap;
     for (i = 0; i < sizeof(eht_cap->mac_cap); i++) {
-        wifi_hal_info_print("%02x ", eht_cap->mac_cap[i]);
+        wifi_hal_info_print("%02x ", ptr[i]);
     }
     wifi_hal_info_print("\n");
 
     /* Print EHT PHY Capabilities */
     wifi_hal_info_print("    EHT PHY Capabilities: ");
+    ptr = (const u8 *)&eht_cap->phy_cap;
     for (i = 0; i < sizeof(eht_cap->phy_cap); i++) {
-        wifi_hal_info_print("%02x ", eht_cap->phy_cap[i]);
+        wifi_hal_info_print("%02x ", ptr[i]);
     }
     wifi_hal_info_print("\n");
 
     /* Decode some important PHY capabilities */
     wifi_hal_info_print("    EHT PHY Decoded:\n");
+    ptr = (const u8 *)&eht_cap->phy_cap;
     wifi_hal_info_print("      - 320MHz in 6GHz: %s\n",
-        (eht_cap->phy_cap[0] & 0x02) ? "Supported" : "Not Supported");
+        (ptr[0] & 0x02) ? "Supported" : "Not Supported");
     wifi_hal_info_print("      - SU Beamformer: %s\n",
-        (eht_cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMER_IDX] & EHT_PHYCAP_SU_BEAMFORMER) ?
+        (ptr[EHT_PHYCAP_SU_BEAMFORMER_IDX] & EHT_PHYCAP_SU_BEAMFORMER) ?
         "Supported" : "Not Supported");
     wifi_hal_info_print("      - SU Beamformee: %s\n",
-        (eht_cap->phy_cap[EHT_PHYCAP_SU_BEAMFORMEE_IDX] & EHT_PHYCAP_SU_BEAMFORMEE) ?
+        (ptr[EHT_PHYCAP_SU_BEAMFORMEE_IDX] & EHT_PHYCAP_SU_BEAMFORMEE) ?
         "Supported" : "Not Supported");
     wifi_hal_info_print("      - MU Beamformer: %s\n",
-        (eht_cap->phy_cap[EHT_PHYCAP_MU_BEAMFORMER_IDX] & EHT_PHYCAP_MU_BEAMFORMER_MASK) ?
+        (ptr[EHT_PHYCAP_MU_BEAMFORMER_IDX] & EHT_PHYCAP_MU_BEAMFORMER_MASK) ?
         "Supported" : "Not Supported");
 
     /* Print EHT MCS/NSS Support */
     wifi_hal_info_print("    EHT MCS/NSS Support: ");
+    ptr = (const u8 *)&eht_cap->mcs;
     for (i = 0; i < sizeof(eht_cap->mcs); i++) {
-        wifi_hal_info_print("%02x ", eht_cap->mcs[i]);
+        wifi_hal_info_print("%02x ", ptr[i]);
     }
     wifi_hal_info_print("\n");
 
     /* Print EHT PPE Thresholds */
     wifi_hal_info_print("    EHT PPE Thresholds: ");
+    ptr = (const u8 *)&eht_cap->ppet;
     for (i = 0; i < sizeof(eht_cap->ppet); i++) {
-        wifi_hal_info_print("%02x ", eht_cap->ppet[i]);
+        wifi_hal_info_print("%02x ", ptr[i]);
     }
     wifi_hal_info_print("\n");
 }

@@ -32,6 +32,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
@@ -6047,6 +6048,19 @@ static int wiphy_get_info_handler(struct nl_msg *msg, void *arg)
         }
     } else {
         wifi_hal_info_print("%s:%d: Interface combinations attribute not present in radio index:%d\n", __func__, __LINE__, radio->index);
+    }
+
+    /*
+     * Optional debug dump: HE/EHT caps are collected into radio->hw_modes[] during
+     * phy_info_band() parsing (via phy_info_iftype_copy()).
+     *
+     * Enable with: WIFI_HAL_DUMP_HE_EHT_CAPS=1
+     */
+    {
+        const char *dump = getenv("WIFI_HAL_DUMP_HE_EHT_CAPS");
+        if (dump != NULL && atoi(dump) != 0) {
+            wifi_hal_dump_radio_he_eht_caps(radio->rdk_radio_index);
+        }
     }
     return NL_OK;
 }

@@ -37,6 +37,7 @@
 #include <netlink/attr.h>
 #include <netlink/genl/genl.h>
 #include <sys/ioctl.h>
+#include <stdlib.h>
 #include "wifi_hal.h"
 #include "wifi_hal_priv.h"
 #include <cjson/cJSON.h>
@@ -4980,4 +4981,131 @@ int wifi_hal_get_mac_address(const char *ifname, mac_address_t mac)
     memcpy(mac, ifr.ifr_hwaddr.sa_data, sizeof(mac_address_t));
 
     return 0;
+}
+
+static const char *wifi_hal_nl80211_band_to_str(enum nl80211_band band)
+{
+    switch (band) {
+    case NL80211_BAND_2GHZ:
+        return "2.4GHz";
+    case NL80211_BAND_5GHZ:
+        return "5GHz";
+#if HOSTAPD_VERSION >= 210
+    case NL80211_BAND_6GHZ:
+        return "6GHz";
+#endif
+    default:
+        return "UNKNOWN";
+    }
+}
+
+static const char *wifi_hal_ieee80211_opmode_to_str(enum ieee80211_op_mode opmode)
+{
+    switch (opmode) {
+    case IEEE80211_MODE_INFRA:
+        return "STA";
+    case IEEE80211_MODE_IBSS:
+        return "IBSS";
+    case IEEE80211_MODE_AP:
+        return "AP";
+    case IEEE80211_MODE_MESH:
+        return "MESH";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+static void wifi_hal_dbg_hexdump(const char *label, const void *data, size_t len)
+{
+    const unsigned char *buf = (const unsigned char *)data;
+    size_t off;
+
+    if (label == NULL) {
+        label = "hexdump";
+    }
+
+    if (buf == NULL) {
+        wifi_hal_dbg_print("%s: (null) len=%zu\n", label, len);
+        return;
+    }
+
+    wifi_hal_dbg_print("%s: len=%zu\n", label, len);
+
+    for (off = 0; off < len; off += 16) {
+        char line[16 * 3 + 1];
+        size_t i;
+        size_t pos = 0;
+
+        for (i = 0; i < 16 && (off + i) < len; i++) {
+            int n = snprintf(&line[pos], sizeof(line) - pos, "%02x%s",
+                buf[off + i], ((off + i + 1) < len && i != 15) ? " " : "");
+            if (n < 0) {
+                break;
+            }
+            pos += (size_t)n;
+            if (pos >= sizeof(line)) {
+                break;
+            }
+        }
+
+        line[(pos < sizeof(line)) ? pos : (sizeof(line) - 1)] = '\0';
+        wifi_hal_dbg_print("%s: %04zx: %s\n", label, off, line);
+    }
+}
+
+void wifi_hal_dump_radio_he_eht_caps(wifi_radio_index_t radio_index)
+{
+    wifi_radio_info_t *radio = get_radio_by_rdk_index(radio_index);
+    unsigned int band;
+    unsigned int opmode;
+
+    if (radio == NULL) {
+        wifi_hal_error_print("%s:%d: radio is NULL for index:%d\n", __func__, __LINE__,
+            (int)radio_index);
+        return;
+    }
+
+    wifi_hal_info_print("%s:%d: HE/EHT caps dump for rdk_radio_index:%d phy_index:%u name:%s\n",
+        __func__, __LINE__, (int)radio_index, radio->index, radio->name);
+
+    for (band = 0; band < NUM_NL80211_BANDS; band++) {
+        struct hostapd_hw_modes *mode = &radio->hw_modes[band];
+
+        wifi_hal_dbg_print("%s:%d: band=%u (%s) mode=%d num_channels=%d num_rates=%d\n",
+            __func__, __LINE__, band, wifi_hal_nl80211_band_to_str((enum nl80211_band)band),
+            mode->mode, mode->num_channels, mode->num_rates);
+
+        for (opmode = 0; opmode < IEEE80211_MODE_NUM; opmode++) {
+#ifdef CONFIG_IEEE80211AX
+            const struct he_capabilities *he = &mode->he_capab[opmode];
+
+            if (he->he_supported) {
+                wifi_hal_dbg_print("%s:%d:  HE opmode=%u (%s) he_supported=%u\n",
+                    __func__, __LINE__, opmode, wifi_hal_ieee80211_opmode_to_str(opmode),
+                    he->he_supported);
+                wifi_hal_dbg_hexdump("    he.mac_cap", he->mac_cap, sizeof(he->mac_cap));
+                wifi_hal_dbg_hexdump("    he.phy_cap", he->phy_cap, sizeof(he->phy_cap));
+                wifi_hal_dbg_hexdump("    he.mcs", he->mcs, sizeof(he->mcs));
+                wifi_hal_dbg_hexdump("    he.ppet", &he->ppet, sizeof(he->ppet));
+#if HOSTAPD_VERSION >= 210
+                wifi_hal_dbg_print("    he.he_6ghz_capa=0x%04x\n", he->he_6ghz_capa);
+#endif /* HOSTAPD_VERSION >= 210 */
+            }
+#endif /* CONFIG_IEEE80211AX */
+
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211)
+            const struct eht_capabilities *eht = &mode->eht_capab[opmode];
+
+            if (eht->eht_supported) {
+                wifi_hal_dbg_print("%s:%d:  EHT opmode=%u (%s) eht_supported=%u\n",
+                    __func__, __LINE__, opmode, wifi_hal_ieee80211_opmode_to_str(opmode),
+                    eht->eht_supported ? 1 : 0);
+                wifi_hal_dbg_hexdump("    eht.mac_cap", &eht->mac_cap, sizeof(eht->mac_cap));
+                wifi_hal_dbg_hexdump("    eht.phy_cap", eht->phy_cap, sizeof(eht->phy_cap));
+                wifi_hal_dbg_hexdump("    eht.mcs", eht->mcs, sizeof(eht->mcs));
+                wifi_hal_dbg_hexdump("    eht.ppet", &eht->ppet, sizeof(eht->ppet));
+            }
+#endif /* CONFIG_IEEE80211BE && HOSTAPD_VERSION >= 211 */
+        }
+    }
 }

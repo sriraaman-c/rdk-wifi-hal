@@ -1197,6 +1197,12 @@ void wifi_hal_stats_print(wifi_hal_stats_log_level_t level, const char *format, 
 #define wifi_hal_stats_info_print(format, ...)  wifi_hal_stats_print(WIFI_HAL_STATS_LOG_LVL_INFO, format, ##__VA_ARGS__)
 #define wifi_hal_stats_error_print(format, ...)  wifi_hal_stats_print(WIFI_HAL_STATS_LOG_LVL_ERROR, format, ##__VA_ARGS__)
 
+/*
+ * Debug helper: dump HE/EHT capability blobs collected into radio->hw_modes[].
+ * Data source: nl80211 wiphy parsing fills hostapd_hw_modes.{he_capab,eht_capab}.
+ */
+void wifi_hal_dump_radio_he_eht_caps(wifi_radio_index_t radio_index);
+
 bool lsmod_by_name(const char *name);
 wifi_device_callbacks_t *get_hal_device_callbacks();
 wifi_device_frame_hooks_t *get_device_frame_hooks();
